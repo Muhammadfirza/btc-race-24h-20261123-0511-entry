@@ -3,6 +3,11 @@
 A bot that trades cbBTC/USDC on 1-minute on-chain prices for the make.fun
 24-hour BTC race. Long only, no leverage, $1,000 paper start.
 
+**v2** keeps the v1 trend core and adds a dip-buying sleeve (below). The
+dev board's leaders all run dip modes in the race ("dip-bounce/trend",
+"dip-rider", "V-recovery/trend"); v1 was trend-only and sat in cash through
+every pullback. v2 buys confirmed pullbacks in tranches instead.
+
 ## Why patient
 
 A full round trip in this replay costs about 35 bps (4 bps fee, 2 bps
@@ -28,6 +33,24 @@ riding it without letting chop shake the position loose.
   flat or falling window, where the main entry may never fire. The scout
   rides the same 2.5% trailing stop.
 
+## v2: dip sleeve (new)
+
+- **Dip tranche 1.** While flat, buy 34% of cash when the close has dipped
+  1.5% or more below the highest close of the last 240 bars **and** bounced
+  — closed 0.3% above the low of the last 5 bars. The bounce is the filter
+  that keeps the sleeve out of falling knives.
+- **Dip tranches 2–3.** While holding a dip position, add 33% of the
+  remaining cash at a 3.0% dip from the same peak, and the rest at a 4.5%
+  dip, each needing the same bounce confirmation.
+- **Dip guard.** No dip buys when the 240-bar return is below −2%: that is
+  a downtrend, not a dip. The 60-bar cooldown gates dip entries too.
+- **Top-up.** A trend confirmation while holding a dip position buys the
+  rest of the cash (breakout-pyramid): the dip got us in early, the trend
+  confirms it.
+- **Stop unchanged.** The 2.5% trailing stop governs every exit. A tighter
+  1.5% stop was tested and rejected: it gets shaken out by ordinary chop
+  and re-enters, bleeding fees on every robust check.
+
 ## Verified results
 
 Kit `grade-local` (process driver) on the published 24h dev window, commit
@@ -51,6 +74,44 @@ the dev window alone:
 - **Reversed window:** the dev window run backwards (a −3.64% day) — the bot
   loses only 0.46 USDC, on the scout trade alone; the main entry never fires.
   Buy-and-hold loses 38.68 USDC on the same window.
+
+## v2 verified results
+
+Kit `grade-local` (process driver) on the dev window, commit `f1b51fb`:
+
+| | |
+|---|---|
+| Net PnL | **+19.729238 USDC** — identical to v1 (the dip sleeve never fires on dev) |
+| Trades | 1 (buy once, hold to the end) |
+| Rejected orders | 0 |
+| Max drawdown | 1.98% (guardrail: ≤ 25%) |
+| Fees | 0.808055 USDC; net PnL at 2x fees +18.91 USDC |
+| Determinism | two executions' action logs matched byte for byte, and the action log is byte-identical to v1's |
+
+The v2 edge is out of sample only, measured on the same windows for both
+versions (local replay harness replicating the engine's fill model; it
+reproduces v1's official dev grade exactly). 180 block-bootstrapped 24h
+windows (3 seeds × 60), v1 vs v2:
+
+| | v1 | v2 |
+|---|---|---|
+| Bootstrap median net PnL | +10.29 / +11.73 / +13.15 | +15.68 / +14.08 / +13.15 |
+| Bootstrap mean net PnL | +16.63 / +16.16 / +18.62 | +17.41 / +16.81 / +19.38 |
+| Bootstrap win rate | 40 / 41 / 45 of 60 | 42 / 41 / 43 of 60 |
+| Bootstrap worst case | −31.93 / −36.42 / −39.88 | identical to v1 on every seed |
+| Bootstrap max drawdown | 4.4% / 4.1% / 4.7% | identical to v1 on every seed |
+| Reversed window (−3.51% day) | −1.70 (scout only) | −1.70 (scout only) |
+
+v2's mean beats v1's on all three seeds (+0.65 to +0.78 USDC) and its median
+on two of three, with an identical worst case, drawdown and falling-day
+result: the dip sleeve adds pullback trades without touching the tail. (The
+v1 figures here are re-measured on the same windows; the v1 builder's
+earlier bootstrap used a different seed, hence different absolute numbers.)
+
+Rejected on the same checks: a **1.5% trailing stop** (dev +11.39, bootstrap
+median +3.72, mean +8.48, win 33/60, worst −55.64) and **unconfirmed dip
+buys** (reversed window −8.85 to −18.21 — the bounce filter is what keeps
+the sleeve out of falling knives).
 
 ## Files
 
